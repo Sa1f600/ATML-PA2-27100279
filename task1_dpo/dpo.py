@@ -11,11 +11,29 @@ def dpo_loss(
     ref_rejected_logp: torch.Tensor,
     beta: float,
 ):
-    """Return scalar DPO loss plus lightweight diagnostics.
+    """Return the DPO loss and diagnostics for a batch of preference pairs.
 
-    Validate this implementation against the equation in the assignment manual
-    before using it.
+    All four inputs are *summed response-token* log-probabilities.  The prompt
+    tokens must not contribute to them.  For each pair the DPO logit is
+
+        beta * ((log pi(y+|x) - log pi(y-|x))
+                - (log pi_ref(y+|x) - log pi_ref(y-|x))).
+
+    Keeping this small function separate makes the sign in the objective easy
+    to unit test independently of model and data loading.
     """
+
+    if beta <= 0:
+        raise ValueError(f"beta must be positive, got {beta}")
+
+    tensors = (
+        policy_chosen_logp,
+        policy_rejected_logp,
+        ref_chosen_logp,
+        ref_rejected_logp,
+    )
+    if any(t.shape != policy_chosen_logp.shape for t in tensors[1:]):
+        raise ValueError("All DPO log-probability tensors must have the same shape")
 
     policy_margin = (
         policy_chosen_logp
@@ -27,10 +45,8 @@ def dpo_loss(
         - ref_rejected_logp
     )
 
-    # Starter implementation:
-    # students must validate the objective carefully.
     logits = beta * (
-        policy_margin + ref_margin
+        policy_margin - ref_margin
     )
 
     loss = -F.logsigmoid(
@@ -43,6 +59,12 @@ def dpo_loss(
 
         "policy_margin_mean":
             policy_margin.detach().mean(),
+
+        "reference_margin_mean":
+            ref_margin.detach().mean(),
+
+        "adjusted_margin_mean":
+            (policy_margin - ref_margin).detach().mean(),
 
         "preference_accuracy": (
             (policy_margin - ref_margin) > 0
