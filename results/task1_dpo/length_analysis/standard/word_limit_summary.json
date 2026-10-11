@@ -1,0 +1,11 @@
+{
+  "name": "standard",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+  "num_prompts": 10,
+  "word_limit_compliance": 0.5,
+  "response_length_tokens": {
+    "mean": 51.4,
+    "std": 28.692159207699934,
+    "iqr": 32.0
+  }
+}

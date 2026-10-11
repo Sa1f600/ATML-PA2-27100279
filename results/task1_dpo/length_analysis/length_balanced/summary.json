@@ -1,0 +1,13 @@
+{
+  "name": "length_balanced_length_stratified",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/length_balanced",
+  "dataset": "data/dpo_length_stratified_eval.jsonl",
+  "seed": 6304,
+  "beta_used_for_eval_loss": 0.1,
+  "num_preference_pairs": 237,
+  "source_preference_pairs": 246,
+  "skipped_overlong_prompts": 9,
+  "held_out_dpo_loss": 0.6759791800492927,
+  "held_out_preference_accuracy": 0.6118143459915611,
+  "adjusted_preference_margin_mean": 0.4481605019750474
+}

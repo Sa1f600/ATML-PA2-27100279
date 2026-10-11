@@ -1,0 +1,13 @@
+{
+  "name": "standard_length_stratified",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+  "dataset": "data/dpo_length_stratified_eval.jsonl",
+  "seed": 6304,
+  "beta_used_for_eval_loss": 0.1,
+  "num_preference_pairs": 237,
+  "source_preference_pairs": 246,
+  "skipped_overlong_prompts": 9,
+  "held_out_dpo_loss": 0.6825094548710288,
+  "held_out_preference_accuracy": 0.5611814345991561,
+  "adjusted_preference_margin_mean": 0.265613122831417
+}

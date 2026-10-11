@@ -1,0 +1,11 @@
+{
+  "name": "length_balanced",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/length_balanced",
+  "num_prompts": 10,
+  "word_limit_compliance": 0.4,
+  "response_length_tokens": {
+    "mean": 47.2,
+    "std": 19.75246820020222,
+    "iqr": 25.5
+  }
+}

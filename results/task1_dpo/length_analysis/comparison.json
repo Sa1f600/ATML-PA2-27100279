@@ -1,0 +1,115 @@
+{
+  "length_balanced_training": {
+    "run_name": "length_balanced",
+    "dataset": "data/dpo_length_balanced_train.jsonl",
+    "output": "/content/ATML-PA2-27100279/outputs/task1_dpo/length_balanced",
+    "seed": 6304,
+    "beta": 0.1,
+    "epochs": 1,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 8,
+    "selected_training_examples": 1500,
+    "training_examples": 1442,
+    "skipped_overlong_prompts": 58,
+    "examples_seen": 1442,
+    "optimizer_steps": 91,
+    "elapsed_seconds": 1012.5597369360003,
+    "final_train_loss": 0.8123822212219238,
+    "final_train_preference_accuracy": 0.0
+  },
+  "conditions": {
+    "standard": {
+      "overall_preference": {
+        "name": "standard_length_stratified",
+        "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+        "dataset": "data/dpo_length_stratified_eval.jsonl",
+        "seed": 6304,
+        "beta_used_for_eval_loss": 0.1,
+        "num_preference_pairs": 237,
+        "source_preference_pairs": 246,
+        "skipped_overlong_prompts": 9,
+        "held_out_dpo_loss": 0.6825094548710288,
+        "held_out_preference_accuracy": 0.5611814345991561,
+        "adjusted_preference_margin_mean": 0.265613122831417
+      },
+      "preference_by_length_stratum": {
+        "matched-length": {
+          "count": 80,
+          "held_out_dpo_loss": 0.6856649152934551,
+          "preference_accuracy": 0.5625,
+          "adjusted_preference_margin_mean": 0.1859066292643547
+        },
+        "preferred-longer": {
+          "count": 78,
+          "held_out_dpo_loss": 0.6990986913442612,
+          "preference_accuracy": 0.46153846153846156,
+          "adjusted_preference_margin_mean": -0.06789882366473858
+        },
+        "rejected-longer": {
+          "count": 79,
+          "held_out_dpo_loss": 0.6629348057734815,
+          "preference_accuracy": 0.6582278481012658,
+          "adjusted_preference_margin_mean": 0.675618835642368
+        }
+      },
+      "word_limit_evaluation": {
+        "name": "standard",
+        "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+        "num_prompts": 10,
+        "word_limit_compliance": 0.5,
+        "response_length_tokens": {
+          "mean": 51.4,
+          "std": 28.692159207699934,
+          "iqr": 32.0
+        }
+      }
+    },
+    "length_balanced": {
+      "overall_preference": {
+        "name": "length_balanced_length_stratified",
+        "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/length_balanced",
+        "dataset": "data/dpo_length_stratified_eval.jsonl",
+        "seed": 6304,
+        "beta_used_for_eval_loss": 0.1,
+        "num_preference_pairs": 237,
+        "source_preference_pairs": 246,
+        "skipped_overlong_prompts": 9,
+        "held_out_dpo_loss": 0.6759791800492927,
+        "held_out_preference_accuracy": 0.6118143459915611,
+        "adjusted_preference_margin_mean": 0.4481605019750474
+      },
+      "preference_by_length_stratum": {
+        "matched-length": {
+          "count": 80,
+          "held_out_dpo_loss": 0.6786609791219235,
+          "preference_accuracy": 0.6125,
+          "adjusted_preference_margin_mean": 0.34136355072259905
+        },
+        "preferred-longer": {
+          "count": 78,
+          "held_out_dpo_loss": 0.720867966230099,
+          "preference_accuracy": 0.44871794871794873,
+          "adjusted_preference_margin_mean": -0.4576393029628656
+        },
+        "rejected-longer": {
+          "count": 79,
+          "held_out_dpo_loss": 0.6289428604554527,
+          "preference_accuracy": 0.7721518987341772,
+          "adjusted_preference_margin_mean": 1.450643297992175
+        }
+      },
+      "word_limit_evaluation": {
+        "name": "length_balanced",
+        "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/length_balanced",
+        "num_prompts": 10,
+        "word_limit_compliance": 0.4,
+        "response_length_tokens": {
+          "mean": 47.2,
+          "std": 19.75246820020222,
+          "iqr": 25.5
+        }
+      }
+    }
+  },
+  "note": "When the released dataset has no explicit stratum field, strata are inferred from response-token lengths using a max(5 tokens, 10%) matching tolerance."
+}
