@@ -35,6 +35,42 @@ def make_collate(tokenizer, max_length):
     return collate
 
 
+def filter_overlong_prompts(tokenizer, rows, max_length):
+    """Remove pairs whose prompt alone cannot fit, recording exact source rows.
+
+    Responses may be truncated to the remaining budget, but truncating a prompt
+    would change the conditioning context.  Filtering is therefore explicit and
+    deterministic, and the skipped indices are saved with every run.
+    """
+    kept, skipped = [], []
+    for dataset_index, row in enumerate(rows):
+        prompt_tokens = tokenizer.apply_chat_template(
+            prompt_messages_from_preference(row),
+            tokenize=True,
+            add_generation_prompt=True,
+        )
+        if len(prompt_tokens) >= max_length:
+            identifier = next(
+                (row[key] for key in ("prompt_id", "pair_id", "source_index", "id") if key in row),
+                dataset_index,
+            )
+            skipped.append({
+                "dataset_index": dataset_index,
+                "example_id": identifier,
+                "prompt_tokens": len(prompt_tokens),
+                "max_sequence_length": max_length,
+                "reason": "prompt_does_not_fit",
+            })
+        else:
+            kept.append(row)
+    if skipped:
+        print(
+            f"Filtered {len(skipped)} of {len(rows)} preference pairs because the prompt "
+            f"alone does not fit max_sequence_length={max_length}."
+        )
+    return kept, skipped
+
+
 def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: float | None = None, max_examples: int | None = None):
     cfg = load_yaml(config_path)
     set_seed(int(cfg["seed"]))
@@ -42,10 +78,16 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
     rows = read_jsonl(path)
     if max_examples is not None:
         rows = rows[: int(max_examples)]
-    if not rows:
-        raise ValueError(f"DPO training dataset is empty: {path}")
-
     tokenizer = load_tokenizer(cfg["base_model"])
+    selected_examples = len(rows)
+    rows, skipped_rows = filter_overlong_prompts(
+        tokenizer,
+        rows,
+        int(cfg["max_sequence_length"]),
+    )
+    if not rows:
+        raise ValueError(f"No DPO training examples fit max_sequence_length: {path}")
+
     model = load_policy(cfg, trainable=True, fresh_lora=True)
     loader_generator = torch.Generator().manual_seed(int(cfg["seed"]))
     loader = DataLoader(
@@ -63,6 +105,8 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
     return {
         "cfg": cfg,
         "rows": rows,
+        "selected_examples": selected_examples,
+        "skipped_rows": skipped_rows,
         "tokenizer": tokenizer,
         "model": model,
         "loader": loader,
@@ -185,6 +229,7 @@ def run_training(
     model.save_pretrained(output)
     bundle["tokenizer"].save_pretrained(output)
     write_jsonl(output / "train_metrics.jsonl", history)
+    write_jsonl(output / "skipped_overlong_prompts.jsonl", bundle["skipped_rows"])
     summary = {
         "run_name": run_name,
         "dataset": str(dataset_path or cfg["paths"]["dpo_standard_train"]),
@@ -194,7 +239,9 @@ def run_training(
         "epochs": epochs,
         "batch_size": int(cfg["batch_size"]),
         "gradient_accumulation_steps": grad_accum,
+        "selected_training_examples": bundle["selected_examples"],
         "training_examples": len(bundle["rows"]),
+        "skipped_overlong_prompts": len(bundle["skipped_rows"]),
         "examples_seen": examples_seen,
         "optimizer_steps": optimizer_steps,
         "elapsed_seconds": timer(),

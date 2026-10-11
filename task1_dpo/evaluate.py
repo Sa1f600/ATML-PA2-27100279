@@ -31,15 +31,24 @@ from common.models import (
     reference_mode,
 )
 from task1_dpo.dpo import dpo_loss
-from task1_dpo.train import make_collate
+from task1_dpo.train import filter_overlong_prompts, make_collate
 
 
 def load_evaluation_bundle(config_path: str, adapter: str, dataset_path: str | None = None):
     cfg = load_yaml(config_path)
+    tokenizer = load_tokenizer(cfg["base_model"])
+    source_rows = read_jsonl(dataset_path or cfg["paths"]["dpo_standard_eval"])
+    rows, skipped_rows = filter_overlong_prompts(
+        tokenizer,
+        source_rows,
+        int(cfg["max_sequence_length"]),
+    )
     return {
         "cfg": cfg,
-        "rows": read_jsonl(dataset_path or cfg["paths"]["dpo_standard_eval"]),
-        "tokenizer": load_tokenizer(cfg["base_model"]),
+        "rows": rows,
+        "source_row_count": len(source_rows),
+        "skipped_rows": skipped_rows,
+        "tokenizer": tokenizer,
         "policy": load_policy(cfg, adapter_path=adapter, trainable=False),
     }
 
@@ -313,6 +322,8 @@ def evaluate_adapter(
         "seed": int(cfg["seed"]),
         "beta_used_for_eval_loss": beta_value,
         "num_preference_pairs": len(pair_records),
+        "source_preference_pairs": bundle["source_row_count"],
+        "skipped_overlong_prompts": len(bundle["skipped_rows"]),
         "held_out_dpo_loss": float(mean(losses)) if losses else None,
         "held_out_preference_accuracy": (
             float(mean(float(value > 0) for value in margins)) if margins else None
@@ -324,6 +335,7 @@ def evaluate_adapter(
     destination = repo_path(output_dir or Path(cfg["results_dir"]) / name)
     destination.mkdir(parents=True, exist_ok=True)
     write_jsonl(destination / "preference_pairs.jsonl", pair_records)
+    write_jsonl(destination / "skipped_overlong_prompts.jsonl", bundle["skipped_rows"])
     if generation_records:
         write_jsonl(destination / "generations.jsonl", generation_records)
     save_json(
