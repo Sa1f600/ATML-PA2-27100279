@@ -1,0 +1,18 @@
+{
+  "run_name": "standard",
+  "dataset": "data/dpo_standard_train.jsonl",
+  "output": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+  "seed": 6304,
+  "beta": 0.1,
+  "epochs": 1,
+  "batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "selected_training_examples": 1500,
+  "training_examples": 1446,
+  "skipped_overlong_prompts": 54,
+  "examples_seen": 1446,
+  "optimizer_steps": 91,
+  "elapsed_seconds": 1342.81205931,
+  "final_train_loss": 0.6179927388827006,
+  "final_train_preference_accuracy": 0.8333333333333334
+}

@@ -1,0 +1,25 @@
+{
+  "name": "standard",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/standard",
+  "dataset": "data/dpo_standard_eval.jsonl",
+  "seed": 6304,
+  "beta_used_for_eval_loss": 0.1,
+  "num_preference_pairs": 290,
+  "source_preference_pairs": 300,
+  "skipped_overlong_prompts": 10,
+  "held_out_dpo_loss": 0.6748561622767613,
+  "held_out_preference_accuracy": 0.6413793103448275,
+  "adjusted_preference_margin_mean": 0.4322672690810828,
+  "sampled_kl_per_response_mean": 0.0027909760122540694,
+  "sampled_kl_per_token": 1.7839608630233197e-05,
+  "sampled_entropy": 0.6881545357960116,
+  "reward_model_score_mean": 1.3598232992764177,
+  "response_length_tokens": {
+    "mean": 156.44827586206895,
+    "std": 103.38227894796876,
+    "iqr": 213.0,
+    "min": 2,
+    "max": 256
+  },
+  "truncation_rate": 0.42758620689655175
+}

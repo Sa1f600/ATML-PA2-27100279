@@ -1,0 +1,25 @@
+{
+  "name": "beta_0p30",
+  "adapter": "/content/ATML-PA2-27100279/outputs/task1_dpo/beta_0p30",
+  "dataset": "data/dpo_standard_eval.jsonl",
+  "seed": 6304,
+  "beta_used_for_eval_loss": 0.3,
+  "num_preference_pairs": 290,
+  "source_preference_pairs": 300,
+  "skipped_overlong_prompts": 10,
+  "held_out_dpo_loss": 0.6779535131207828,
+  "held_out_preference_accuracy": 0.6344827586206897,
+  "adjusted_preference_margin_mean": 0.12315914034843445,
+  "sampled_kl_per_response_mean": -0.04559713192163677,
+  "sampled_kl_per_token": -0.00029758452249971113,
+  "sampled_entropy": 0.6852116543454407,
+  "reward_model_score_mean": 1.192767518142174,
+  "response_length_tokens": {
+    "mean": 153.22413793103448,
+    "std": 107.33216940775063,
+    "iqr": 224.0,
+    "min": 2,
+    "max": 256
+  },
+  "truncation_rate": 0.4482758620689655
+}

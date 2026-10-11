@@ -1,0 +1,18 @@
+{
+  "run_name": "beta_0p10",
+  "dataset": "data/dpo_standard_train.jsonl",
+  "output": "/content/ATML-PA2-27100279/outputs/task1_dpo/beta_0p10",
+  "seed": 6304,
+  "beta": 0.1,
+  "epochs": 1,
+  "batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "selected_training_examples": 600,
+  "training_examples": 581,
+  "skipped_overlong_prompts": 19,
+  "examples_seen": 581,
+  "optimizer_steps": 37,
+  "elapsed_seconds": 528.6598526370008,
+  "final_train_loss": 0.690450918674469,
+  "final_train_preference_accuracy": 0.4
+}

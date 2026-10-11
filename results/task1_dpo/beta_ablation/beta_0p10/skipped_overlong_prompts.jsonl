@@ -1,0 +1,10 @@
+{"dataset_index": 32, "example_id": "99a843a7d5621de7f5660c5de46249dc47af2796ad9e8e81a4e11ca699ab2748", "prompt_tokens": 939, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 60, "example_id": "f8603e835872e1c804ef8544b8a345f7bb4ff0925b11d3da1d6648cb045fbade", "prompt_tokens": 1238, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 71, "example_id": "175ce5926626b171f863baf48b4337e2a17a5fcbf04b571e1e0612c7bd12d365", "prompt_tokens": 1032, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 103, "example_id": "fb2604c2ddf9bd32e3c8024fa9231c380053d0879e36fcb2a65f210d7ae850e3", "prompt_tokens": 952, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 174, "example_id": "8ae54306663e1244ce441e11a1a615c75f0642e703802706ec13a596bec9fd9a", "prompt_tokens": 951, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 184, "example_id": "f32980bf904020cd42532d2c16795204fd4edff4db3567e207bb8e23b26c1d52", "prompt_tokens": 1861, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 239, "example_id": "d7baf0d12770c7c089820ef841ca71a51f8ed5f9138ac00ab318f5c6b044ae4f", "prompt_tokens": 918, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 240, "example_id": "8199434086917005eb12e429e46039f7c298eaa5f27f5c344e336ac7f06cb904", "prompt_tokens": 1064, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 254, "example_id": "6f0d9a5c3f6b412c13c065f75b30d4341e88b6ebe13859cd28ce373db6e41f36", "prompt_tokens": 1118, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
+{"dataset_index": 284, "example_id": "2708b4a670f35fd3c1065f430d700cfe7cb2d20aeaa3ba7214e3cb411d132648", "prompt_tokens": 1172, "max_sequence_length": 768, "reason": "prompt_does_not_fit"}
