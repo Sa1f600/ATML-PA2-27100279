@@ -74,6 +74,8 @@ def evaluate_adapter(
     output_dir: str | Path | None = None,
     max_prompts: int | None = None,
 ):
+    if not torch.cuda.is_available():
+        raise RuntimeError("Task 2 evaluation requires a CUDA GPU")
     bundle = load_evaluation_bundle(config_path, adapter)
     cfg = bundle["cfg"]
     rows = bundle["rows"]

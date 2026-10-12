@@ -95,6 +95,8 @@ def _cached_task_reward(row: dict):
 
 
 def run_cached_clipping_study(config_path: str):
+    if not torch.cuda.is_available():
+        raise RuntimeError("The Task 2 cached-rollout study requires a CUDA GPU")
     cfg = load_yaml(config_path)
     rows = load_cached_rollouts(cfg["cached_rollouts"])
     prompt_rows = read_jsonl(cfg["paths"]["rl_prompt_train"])

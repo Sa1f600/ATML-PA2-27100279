@@ -106,6 +106,14 @@ class PPOObjectiveTests(unittest.TestCase):
         mask = torch.tensor([[1.0, 1.0, 0.0]])
         self.assertAlmostEqual(float(value_mse_loss(predicted, returns, mask)), 2.5)
 
+    def test_value_loss_accumulates_in_float32(self):
+        predicted = torch.tensor([[400.0]], dtype=torch.float16)
+        returns = torch.tensor([[0.0]], dtype=torch.float16)
+        mask = torch.ones_like(predicted)
+        loss = value_mse_loss(predicted, returns, mask)
+        self.assertTrue(torch.isfinite(loss))
+        self.assertAlmostEqual(float(loss), 160000.0)
+
 
 if __name__ == "__main__":
     unittest.main()

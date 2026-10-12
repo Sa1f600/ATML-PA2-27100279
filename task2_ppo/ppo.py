@@ -80,7 +80,11 @@ def ppo_policy_loss(new_logp, old_logp, advantage, mask, eps=0.2):
 
 
 def value_mse_loss(predicted_values, returns, mask):
-    return masked_mean((predicted_values - returns) ** 2, mask)
+    # Squaring in fp16 overflows for errors above ~256 even though the result is
+    # perfectly representable in fp32.  Critic regression is therefore always
+    # accumulated in fp32.
+    error = predicted_values.float() - returns.float()
+    return masked_mean(error.square(), mask)
 
 
 def normalize_advantages(advantages, mask, eps=1e-6):

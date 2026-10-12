@@ -45,6 +45,35 @@ def _disable_dropout(model) -> None:
             module.eval()
 
 
+def _require_finite(name: str, tensor: torch.Tensor, mask: torch.Tensor | None = None) -> None:
+    values = tensor[mask.bool()] if mask is not None else tensor.reshape(-1)
+    if values.numel() == 0:
+        raise FloatingPointError(f"{name} has no valid values")
+    finite = torch.isfinite(values)
+    if bool(finite.all().item()):
+        return
+    finite_values = values[finite]
+    finite_range = "no finite values"
+    if finite_values.numel():
+        finite_range = (
+            f"finite_min={float(finite_values.min().item()):.6g}, "
+            f"finite_max={float(finite_values.max().item()):.6g}"
+        )
+    raise FloatingPointError(
+        f"{name} contains {int((~finite).sum().item())}/{values.numel()} "
+        f"non-finite values ({finite_range})"
+    )
+
+
+@torch.no_grad()
+def _require_finite_parameters(name: str, parameters: list[torch.nn.Parameter]) -> None:
+    for index, parameter in enumerate(parameters):
+        if not bool(torch.isfinite(parameter).all().item()):
+            raise FloatingPointError(
+                f"{name} parameter {index} became non-finite after optimizer.step()"
+            )
+
+
 def _response_values(value_model, generated: dict) -> torch.Tensor:
     """Return V(s_t) aligned with every generated response token a_t."""
     all_values = token_values(
@@ -77,21 +106,34 @@ def _save_compact_logs(cfg: dict, run_name: str, history: list[dict], rollouts: 
     save_json(destination / "training_summary.json", summary)
 
 
+def _save_progress_logs(cfg: dict, run_name: str, output, history: list[dict], rollouts: list[dict]):
+    """Checkpoint compact evidence after every completed PPO update."""
+    write_jsonl(output / "train_metrics.jsonl", history)
+    write_jsonl(output / "rollouts.jsonl", rollouts)
+    destination = repo_path(cfg["results_dir"]) / "training_logs" / run_name
+    destination.mkdir(parents=True, exist_ok=True)
+    write_jsonl(destination / "train_metrics.jsonl", history)
+    write_jsonl(destination / "rollouts.jsonl", rollouts)
+
+
 def prepare_ppo_continuation(config_path: str):
     cfg = load_yaml(config_path)
     set_seed(int(cfg["seed"]))
 
+    print("Loading PPO tokenizer and midpoint policy...", flush=True)
     tokenizer = load_tokenizer(cfg["base_model"])
     policy = load_policy(
         cfg,
         adapter_path=cfg["paths"]["ppo_midpoint_policy"],
         trainable=True,
     )
+    print("Loading matched midpoint critic...", flush=True)
     value_model = load_value_model(
         cfg,
         cfg["paths"]["ppo_midpoint_value"],
         train_mode=cfg.get("value_train_mode", "head_only"),
     )
+    print("Loading frozen reward model...", flush=True)
     reward_model, reward_tokenizer = load_reward_model(cfg)
     prompts = read_jsonl(cfg["paths"]["rl_prompt_train"])
     if not prompts:
@@ -132,8 +174,12 @@ def run_ppo(
     run_name: str = "standard",
 ):
     """Continue PPO from the supplied policy and critic midpoint checkpoints."""
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Task 2 PPO requires a CUDA GPU. In Colab select Runtime > Change "
+            "runtime type > T4 GPU, then rerun this command."
+        )
+    torch.cuda.reset_peak_memory_stats()
     timer = wall_timer()
     bundle = prepare_ppo_continuation(config_path)
     cfg = bundle["cfg"]
@@ -166,6 +212,12 @@ def run_ppo(
     policy_params = trainable_parameters(policy)
     value_params = trainable_parameters(value_model)
     device = next(policy.parameters()).device
+    print(
+        f"[{run_name}] device={device} gpu={torch.cuda.get_device_name(0)} "
+        f"policy_trainable_dtype={policy_params[0].dtype} "
+        f"critic_trainable_dtype={value_params[0].dtype}",
+        flush=True,
+    )
     # PPO likelihood ratios assume that old/new log-probability differences are
     # caused by parameter updates, not independent dropout masks. Keep the
     # parent model in train mode (for gradient checkpointing) but disable its
@@ -248,6 +300,11 @@ def run_ppo(
                 max_length=int(cfg["reward_max_length"]),
             ).to(device)
 
+        _require_finite("old policy log-probabilities", old_logp, response_mask)
+        _require_finite("reference log-probabilities", ref_logp, response_mask)
+        _require_finite("rollout critic values", rollout_values, response_mask)
+        _require_finite("learned rewards", raw_task_reward)
+
         task_reward = raw_task_reward.clone()
         for row_index, terminated in enumerate(generated["terminated_with_eos"]):
             if not terminated:
@@ -267,8 +324,12 @@ def run_ppo(
             gamma=float(cfg["gamma"]),
             lam=float(cfg["gae_lambda"]),
         )
+        _require_finite("KL-shaped rewards", rewards, response_mask)
+        _require_finite("unnormalized advantages", advantages, response_mask)
+        _require_finite("critic returns", returns, response_mask)
         advantages = normalize_advantages(advantages, response_mask).detach()
         returns = returns.detach()
+        _require_finite("normalized advantages", advantages, response_mask)
 
         rollout_kl_token = float(sampled_kl(old_logp, ref_logp, response_mask).item())
         rollout_kl_sequence = float(
@@ -295,6 +356,12 @@ def run_ppo(
                 generated["response_ids"],
             )
             del new_logits
+            _require_finite(
+                f"new policy log-probabilities (update {update_index + 1}, "
+                f"epoch {_epoch + 1})",
+                new_logp,
+                response_mask,
+            )
             policy_loss, ratio, clip_fraction = ppo_policy_loss(
                 new_logp,
                 old_logp.detach(),
@@ -304,11 +371,23 @@ def run_ppo(
             )
             if not torch.isfinite(policy_loss):
                 raise FloatingPointError(
-                    f"Non-finite PPO policy loss at update {update_index + 1}"
+                    f"Non-finite PPO policy loss at update {update_index + 1}, "
+                    f"epoch {_epoch + 1}"
                 )
             policy_loss.backward()
-            policy_grad_norm = torch.nn.utils.clip_grad_norm_(policy_params, max_grad_norm)
+            try:
+                policy_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    policy_params,
+                    max_grad_norm,
+                    error_if_nonfinite=True,
+                )
+            except RuntimeError as exc:
+                raise FloatingPointError(
+                    f"Non-finite policy gradient at update {update_index + 1}, "
+                    f"epoch {_epoch + 1}"
+                ) from exc
             policy_optimizer.step()
+            _require_finite_parameters("policy", policy_params)
 
             outside = ((ratio < 1.0 - epsilon) | (ratio > 1.0 + epsilon)).float()
             epoch_policy_losses.append(float(policy_loss.detach().item()))
@@ -319,15 +398,32 @@ def run_ppo(
 
             value_optimizer.zero_grad(set_to_none=True)
             predicted_values = _response_values(value_model, generated)
+            _require_finite(
+                f"critic predictions (update {update_index + 1}, epoch {_epoch + 1})",
+                predicted_values,
+                response_mask,
+            )
             value_loss = value_mse_loss(predicted_values, returns, response_mask)
             scaled_value_loss = value_coef * value_loss
             if not torch.isfinite(scaled_value_loss):
                 raise FloatingPointError(
-                    f"Non-finite PPO value loss at update {update_index + 1}"
+                    f"Non-finite PPO value loss at update {update_index + 1}, "
+                    f"epoch {_epoch + 1}"
                 )
             scaled_value_loss.backward()
-            value_grad_norm = torch.nn.utils.clip_grad_norm_(value_params, max_grad_norm)
+            try:
+                value_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    value_params,
+                    max_grad_norm,
+                    error_if_nonfinite=True,
+                )
+            except RuntimeError as exc:
+                raise FloatingPointError(
+                    f"Non-finite critic gradient at update {update_index + 1}, "
+                    f"epoch {_epoch + 1}"
+                ) from exc
             value_optimizer.step()
+            _require_finite_parameters("critic", value_params)
             epoch_value_losses.append(float(value_loss.detach().item()))
             epoch_value_grad_norms.append(float(torch.as_tensor(value_grad_norm).item()))
 
@@ -385,6 +481,8 @@ def run_ppo(
                 "truncated": bool(generated["truncated"][local_index]),
             })
 
+        _save_progress_logs(cfg, run_name, out, history, rollout_records)
+
         print(
             f"[{run_name}] update {update_index + 1}/{num_updates} "
             f"reward={record['learned_reward']:.4f} "
@@ -392,14 +490,14 @@ def run_ppo(
             f"policy={record['policy_loss']:.4f} "
             f"value={record['value_loss']:.4f} "
             f"clip={record['clip_fraction']:.3f} "
-            f"length={record['response_length_tokens']:.1f}"
+            f"length={record['response_length_tokens']:.1f}",
+            flush=True,
         )
 
     policy.save_pretrained(out)
     tokenizer.save_pretrained(out)
     value_model.save_pretrained(out / "value_model")
-    write_jsonl(out / "train_metrics.jsonl", history)
-    write_jsonl(out / "rollouts.jsonl", rollout_records)
+    _save_progress_logs(cfg, run_name, out, history, rollout_records)
 
     elapsed = timer()
     peak_allocated_gib = None

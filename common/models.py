@@ -60,8 +60,47 @@ def make_value_lora_config(cfg: dict) -> LoraConfig:
     )
 
 
+def promote_trainable_parameters(model) -> None:
+    """Keep optimizer-owned parameters in fp32 while frozen weights stay compact.
+
+    AdamW's default epsilon underflows in fp16.  In particular, the trainable
+    PPO value head can become NaN after its first optimizer step if it inherits
+    the checkpoint's fp16 dtype.  LoRA/head parameters are small, so promoting
+    only trainable tensors has negligible memory cost and keeps optimizer state
+    numerically stable.
+    """
+    for parameter in model.parameters():
+        if parameter.requires_grad and parameter.is_floating_point():
+            parameter.data = parameter.data.float()
+
+
+def _scalar_head(model):
+    if hasattr(model, "score"):
+        return model.score
+    if hasattr(model, "classifier"):
+        return model.classifier
+    raise RuntimeError("Could not locate scalar value head")
+
+
+def _require_adapter_checkpoint(path: str | Path) -> Path:
+    resolved = repo_path(path)
+    weight_files = (
+        resolved / "adapter_model.safetensors",
+        resolved / "adapter_model.bin",
+    )
+    if not (resolved / "adapter_config.json").is_file() or not any(
+        candidate.is_file() for candidate in weight_files
+    ):
+        raise FileNotFoundError(
+            f"Incomplete LoRA adapter checkpoint: {resolved}. Expected "
+            "adapter_config.json and adapter_model.safetensors (or .bin)."
+        )
+    return resolved
+
+
 def load_policy(cfg: dict, adapter_path: str | None = None, trainable: bool = False, fresh_lora: bool = False):
     dtype = resolve_dtype(cfg.get("dtype", "float16"))
+    resolved_adapter = _require_adapter_checkpoint(adapter_path) if adapter_path else None
     model = AutoModelForCausalLM.from_pretrained(
         cfg["base_model"],
         dtype=dtype,
@@ -70,14 +109,17 @@ def load_policy(cfg: dict, adapter_path: str | None = None, trainable: bool = Fa
     tok_for_config = load_tokenizer(cfg["base_model"])
     model.config.pad_token_id = tok_for_config.pad_token_id
 
-    if adapter_path:
+    if resolved_adapter is not None:
         model = PeftModel.from_pretrained(
             model,
-            str(repo_path(adapter_path)),
+            str(resolved_adapter),
             is_trainable=trainable,
         )
     elif fresh_lora:
         model = get_peft_model(model, make_lora_config(cfg))
+
+    if trainable:
+        promote_trainable_parameters(model)
 
     if torch.cuda.is_available():
         model = model.cuda()
@@ -160,6 +202,10 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
     tok_for_config = load_tokenizer(cfg["base_model"])
     model.config.pad_token_id = tok_for_config.pad_token_id
     model.config.use_cache = False
+    # The released critic may be loaded in fp16 on a T4.  Keep its tiny scalar
+    # head in fp32 so token values and head gradients cannot overflow at the
+    # first PPO update.
+    _scalar_head(model).float()
 
     if train_mode == "lora_head":
         # The released critic is a full merged checkpoint. Wrapping it with a fresh,
@@ -180,6 +226,8 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
         pass
     else:
         raise ValueError(f"Unknown value train_mode={train_mode!r}")
+
+    promote_trainable_parameters(model)
 
     if torch.cuda.is_available():
         model = model.cuda()
@@ -231,13 +279,10 @@ def token_values(value_model, input_ids, attention_mask):
         use_cache=False,
     )
     hidden = outputs.hidden_states[-1]
-    if hasattr(value_model, "score"):
-        head = value_model.score
-    elif hasattr(value_model, "classifier"):
-        head = value_model.classifier
-    else:
-        raise RuntimeError("Could not locate scalar value head")
-    return head(hidden).squeeze(-1)
+    head = _scalar_head(value_model)
+    head_parameter = next(head.parameters(), None)
+    head_dtype = head_parameter.dtype if head_parameter is not None else hidden.dtype
+    return head(hidden.to(dtype=head_dtype)).squeeze(-1).float()
 
 
 def trainable_parameters(model):
