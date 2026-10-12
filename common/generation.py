@@ -42,7 +42,13 @@ def batch_generate(
     enc = {k: v.to(device) for k, v in enc.items()}
 
     was_training = model.training
+    previous_use_cache = getattr(model.config, "use_cache", None)
     model.eval()
+    # Training enables gradient checkpointing and therefore disables the KV
+    # cache. Rollout generation is inference-only, so temporarily re-enable it;
+    # otherwise long PPO/GRPO continuations become prohibitively slow.
+    if previous_use_cache is not None:
+        model.config.use_cache = True
     kwargs = {
         "max_new_tokens": max_new_tokens,
         "do_sample": do_sample,
@@ -52,10 +58,14 @@ def batch_generate(
     if do_sample:
         kwargs.update({"temperature": temperature, "top_p": top_p})
 
-    with torch.inference_mode():
-        seq = model.generate(**enc, **kwargs)
-    if was_training:
-        model.train()
+    try:
+        with torch.inference_mode():
+            seq = model.generate(**enc, **kwargs)
+    finally:
+        if previous_use_cache is not None:
+            model.config.use_cache = previous_use_cache
+        if was_training:
+            model.train()
 
     prompt_width = enc["input_ids"].shape[1]
     response_ids = seq[:, prompt_width:]
