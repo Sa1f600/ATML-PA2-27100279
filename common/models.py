@@ -14,6 +14,7 @@ from transformers import (
 )
 
 from common.data import repo_path
+from common.model_structure import locate_transformer_backbone
 
 
 def resolve_dtype(name: str):
@@ -212,6 +213,10 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
         # zero-initialized LoRA adapter preserves the exact starting value function while
         # giving the continuation run critic capacity comparable to instructor preparation.
         model = get_peft_model(model, make_value_lora_config(cfg))
+        # PEFT replaces modules_to_save with a wrapper containing an active
+        # adapter-specific copy. Cast the wrapper after construction as well,
+        # so both the original and active score modules are guaranteed fp32.
+        _scalar_head(model).float()
     elif train_mode == "head_only":
         for name, p in model.named_parameters():
             p.requires_grad_("score" in name or "classifier" in name)
@@ -270,15 +275,20 @@ def value_parameter_groups(model, lora_lr: float, head_lr: float):
 
 
 def token_values(value_model, input_ids, attention_mask):
-    backbone = getattr(value_model, value_model.base_model_prefix)
+    # Calling the PEFT wrapper here would invoke the sequence-classification
+    # head before we can project token states safely in fp32. The LoRA layers
+    # remain active because PEFT injected them into the returned backbone.
+    backbone = locate_transformer_backbone(value_model)
     outputs = backbone(
         input_ids=input_ids,
         attention_mask=attention_mask,
-        output_hidden_states=True,
+        output_hidden_states=False,
         return_dict=True,
         use_cache=False,
     )
-    hidden = outputs.hidden_states[-1]
+    # Only the final state is needed. Requesting every layer's hidden state can
+    # retain a large activation stack and needlessly increase T4 memory use.
+    hidden = outputs.last_hidden_state
     head = _scalar_head(value_model)
     head_parameter = next(head.parameters(), None)
     head_dtype = head_parameter.dtype if head_parameter is not None else hidden.dtype

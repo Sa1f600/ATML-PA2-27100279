@@ -92,6 +92,38 @@ def _response_values(value_model, generated: dict) -> torch.Tensor:
     return values.float()
 
 
+def _preflight_value_model(value_model, tokenizer, prompt_row: dict, cfg: dict) -> None:
+    """Exercise the exact token-value path before loading the reward model."""
+    rendered = tokenizer.apply_chat_template(
+        prompt_messages(prompt_row),
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    encoded = tokenizer(
+        rendered,
+        return_tensors="pt",
+        truncation=True,
+        max_length=int(cfg["max_prompt_length"]),
+    )
+    device = next(value_model.parameters()).device
+    encoded = {name: tensor.to(device) for name, tensor in encoded.items()}
+    with torch.no_grad():
+        values = token_values(
+            value_model,
+            encoded["input_ids"],
+            encoded["attention_mask"],
+        )
+    if values.shape != encoded["input_ids"].shape:
+        raise RuntimeError(
+            "Critic preflight returned the wrong token-value shape: "
+            f"values={tuple(values.shape)}, input_ids={tuple(encoded['input_ids'].shape)}"
+        )
+    _require_finite("critic preflight values", values)
+    del encoded, values
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _mean_or_none(records: list[dict], key: str):
     values = [float(row[key]) for row in records if row.get(key) is not None]
     return float(mean(values)) if values else None
@@ -120,6 +152,10 @@ def prepare_ppo_continuation(config_path: str):
     cfg = load_yaml(config_path)
     set_seed(int(cfg["seed"]))
 
+    prompts = read_jsonl(cfg["paths"]["rl_prompt_train"])
+    if not prompts:
+        raise ValueError("The PPO training prompt pool is empty")
+
     print("Loading PPO tokenizer and midpoint policy...", flush=True)
     tokenizer = load_tokenizer(cfg["base_model"])
     policy = load_policy(
@@ -133,11 +169,13 @@ def prepare_ppo_continuation(config_path: str):
         cfg["paths"]["ppo_midpoint_value"],
         train_mode=cfg.get("value_train_mode", "head_only"),
     )
+    print("Checking critic token-value path...", flush=True)
+    _preflight_value_model(value_model, tokenizer, prompts[0], cfg)
     print("Loading frozen reward model...", flush=True)
     reward_model, reward_tokenizer = load_reward_model(cfg)
-    prompts = read_jsonl(cfg["paths"]["rl_prompt_train"])
-    if not prompts:
-        raise ValueError("The PPO training prompt pool is empty")
+    # Model initialization and the preflight forward consume RNG state. Reset
+    # once setup is complete so rollout sampling starts from the recorded seed.
+    set_seed(int(cfg["seed"]))
 
     policy_optimizer = AdamW(
         trainable_parameters(policy),

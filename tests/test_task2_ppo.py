@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import torch
 
 from common.generation import batch_generate
+from common.model_structure import locate_transformer_backbone
 from task2_ppo.ppo import (
     compute_gae,
     normalize_advantages,
@@ -14,6 +15,32 @@ from task2_ppo.ppo import (
 
 
 class PPOObjectiveTests(unittest.TestCase):
+    def test_value_backbone_bypasses_sequence_classifier_head(self):
+        class Backbone:
+            pass
+
+        class SequenceClassifier:
+            base_model_prefix = "model"
+
+            def __init__(self):
+                self.model = Backbone()
+
+            def __call__(self, *_args, **_kwargs):
+                raise AssertionError("the sequence-classification head was invoked")
+
+        class PeftLikeWrapper:
+            def __init__(self):
+                self.classifier = SequenceClassifier()
+
+            def get_base_model(self):
+                return self.classifier
+
+        wrapped = PeftLikeWrapper()
+        self.assertIs(
+            locate_transformer_backbone(wrapped),
+            wrapped.classifier.model,
+        )
+
     def test_generated_token_ids_can_be_reused_by_autograd(self):
         class DummyTokenizer:
             pad_token_id = 0
