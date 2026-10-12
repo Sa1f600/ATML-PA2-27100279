@@ -61,6 +61,10 @@ def batch_generate(
     try:
         with torch.inference_mode():
             seq = model.generate(**enc, **kwargs)
+        # Inference-mode tensors cannot later participate in an autograd graph.
+        # PPO/GRPO reuse sampled token IDs while recomputing trainable log-probs,
+        # so cross that boundary with a regular detached tensor.
+        seq = seq.clone()
     finally:
         if previous_use_cache is not None:
             model.config.use_cache = previous_use_cache

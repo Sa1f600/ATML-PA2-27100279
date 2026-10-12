@@ -217,7 +217,10 @@ def run_ppo(
 
         # Freeze behavior-policy quantities for all PPO epochs over this
         # rollout. The disabled LoRA adapter is the supplied frozen reference.
-        with torch.inference_mode():
+        # no_grad (rather than inference_mode) is intentional: these frozen
+        # rollout quantities are later combined with trainable tensors during
+        # the PPO epochs, which inference tensors do not permit.
+        with torch.no_grad():
             old_logp, old_logits = response_token_logprobs(
                 policy,
                 generated["sequences"],

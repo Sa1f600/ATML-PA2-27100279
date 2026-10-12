@@ -1,7 +1,9 @@
 import unittest
+from types import SimpleNamespace
 
 import torch
 
+from common.generation import batch_generate
 from task2_ppo.ppo import (
     compute_gae,
     normalize_advantages,
@@ -12,6 +14,49 @@ from task2_ppo.ppo import (
 
 
 class PPOObjectiveTests(unittest.TestCase):
+    def test_generated_token_ids_can_be_reused_by_autograd(self):
+        class DummyTokenizer:
+            pad_token_id = 0
+            eos_token_id = 2
+
+            def apply_chat_template(self, *_args, **_kwargs):
+                return "prompt"
+
+            def __call__(self, *_args, **_kwargs):
+                return {
+                    "input_ids": torch.tensor([[1]]),
+                    "attention_mask": torch.tensor([[1]]),
+                }
+
+            def decode(self, *_args, **_kwargs):
+                return "response"
+
+        class DummyModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.anchor = torch.nn.Parameter(torch.zeros(()))
+                self.config = SimpleNamespace(use_cache=False)
+
+            def generate(self, input_ids, **_kwargs):
+                response = torch.tensor([[1, 2]], device=input_ids.device)
+                return torch.cat([input_ids, response], dim=1)
+
+        generated = batch_generate(
+            DummyModel(),
+            DummyTokenizer(),
+            [[{"role": "user", "content": "test"}]],
+            max_prompt_length=8,
+            max_new_tokens=2,
+        )
+        logits = torch.randn(1, 2, 4, requires_grad=True)
+        chosen = torch.gather(
+            logits.log_softmax(-1),
+            -1,
+            generated["response_ids"].unsqueeze(-1),
+        ).sum()
+        chosen.backward()
+        self.assertIsNotNone(logits.grad)
+
     def test_clipped_surrogate_uses_pessimistic_minimum(self):
         ratios = torch.tensor([[1.5, 1.5, 0.5, 0.5]])
         new_logp = ratios.log()
