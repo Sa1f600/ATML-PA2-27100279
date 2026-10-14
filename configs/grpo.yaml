@@ -3,6 +3,9 @@ updates: 20
 fork_updates: 8
 prompts_per_update: 1
 policy_epochs: 1
+# Accumulate the exact K-completion objective one completion at a time so the
+# full-vocabulary autograd graph stays comfortably within a 15 GB T4.
+train_micro_batch_size: 1
 learning_rate: 5.0e-6
 clip_epsilon: 0.20
 kl_beta: 0.10
@@ -10,7 +13,13 @@ num_generations: 4
 group_sizes: [2, 4, 8]
 max_prompt_length: 256
 max_completion_length: 512
+# Use the same larger held-out cap as PPO so policy comparisons share a common
+# evaluation budget while continuation rollouts remain feasible on a T4.
+eval_max_completion_length: 768
+eval_batch_size: 1
+reward_max_length: 1280
 mask_truncated_completions: true
+advantage_epsilon: 1.0e-6
 max_grad_norm: 1.0
 output: outputs/task3_grpo/standard
 results_dir: results/task3_grpo
