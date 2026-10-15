@@ -4,10 +4,14 @@ safety_max_new_tokens: 256
 safety_max_prompt_length: 256
 safety_batch_size: 4
 math_max_new_tokens: 512
+math_max_prompt_length: 512
+math_batch_size: 4
+math_judge_checkpoint_every: 5
 judge_max_new_tokens: 64
 judge_temperature: 0.0
 judge_checkpoint_every: 5
 manual_audit_per_class: 30
+task5_judge_cache: results/task5_feedback/pairwise_judge_cache.json
 policies:
   sft: null
   dpo: outputs/task1_dpo/standard

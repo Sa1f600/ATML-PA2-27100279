@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import json
 import re
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +12,6 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from common.data import repo_path
-from common.models import resolve_dtype
 
 PAIRWISE_RUBRIC = """You are comparing two candidate solutions to the same math problem.
 
@@ -37,6 +37,8 @@ class PairwiseAIJudge:
     """Fixed course judge with deterministic A/B orientation balancing and persistent caching."""
 
     def __init__(self, cfg: dict, cache_path: str | Path):
+        from common.models import resolve_dtype
+
         self.cfg = cfg
         self.cache_path = repo_path(cache_path)
         if self.cache_path.exists():
@@ -64,6 +66,27 @@ class PairwiseAIJudge:
         self.model = AutoModelForCausalLM.from_pretrained(cfg["ai_judge_model"], **kwargs)
         self.model.eval()
 
+    def _model_device(self) -> torch.device:
+        for parameter in self.model.parameters():
+            if parameter.device.type != "meta":
+                return parameter.device
+        raise RuntimeError("Could not find a materialized pairwise-judge parameter")
+
+    def _save_cache(self) -> None:
+        """Atomically persist every judge decision so interrupted runs can resume."""
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.cache_path.parent,
+            prefix=self.cache_path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            json.dump(self.cache, stream, indent=2, sort_keys=True)
+            temporary = Path(stream.name)
+        temporary.replace(self.cache_path)
+
     def _key(self, problem, a, b):
         payload = json.dumps(
             {"model": self.cfg["ai_judge_model"], "problem": problem, "a": a, "b": b},
@@ -84,7 +107,7 @@ class PairwiseAIJudge:
             [{"role": "user", "content": text}],
             return_tensors="pt",
             add_generation_prompt=True,
-        ).to(next(self.model.parameters()).device)
+        ).to(self._model_device())
         out = self.model.generate(
             ids,
             max_new_tokens=4,
@@ -99,8 +122,7 @@ class PairwiseAIJudge:
             result = {"A": "B", "B": "A", "TIE": "TIE"}[result]
 
         self.cache[key] = result
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(json.dumps(self.cache, indent=2), encoding="utf-8")
+        self._save_cache()
         return result
 
     def group_rewards(self, problem: str, responses: list[str]):

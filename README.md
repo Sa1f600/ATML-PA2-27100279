@@ -129,14 +129,27 @@ confusion, ambiguous-rate, and qualitative-disagreement outputs.
 
 ### Task 5 - RLVR vs RLAIF
 
-The exact verifier and pairwise AI judge are supplied; you implement the evaluation/analysis.
+The Task 5 pipeline evaluates the frozen SFT, RLVR, and RLAIF policies on the
+fixed GSM8K and SVAMP splits, scores the controlled five-variant diagnostic set
+with both feedback mechanisms, and writes a final comparison. Generation and
+pairwise judging use deterministic decoding and persistent checkpoints/caches,
+so interrupted notebook runs can be resumed by rerunning the same command.
 
 ```bash
+python -m unittest tests.test_task5_feedback -v
 python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset gsm
 python -m task5_feedback.score_perturbations --config configs/feedback.yaml
 python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset transfer
 python -m task5_feedback.compare_feedback --config configs/feedback.yaml
 ```
+
+Machine-readable outputs are saved under `results/task5_feedback/`. The GSM and
+transfer folders contain per-policy generations, exact-verifier metrics, and
+RLVR/RLAIF pairwise comparisons against SFT. The diagnostics folder contains
+per-variant scores, controlled-pair outcomes, `S_reason`, `S_outcome`, filler
+susceptibility, distractor robustness, and qualitative candidates. The final
+comparison command produces `comparison.json`, compact CSV tables, and selected
+verifier/judge disagreement examples.
 
 ## 6. Reproducibility rules
 
