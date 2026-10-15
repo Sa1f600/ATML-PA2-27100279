@@ -1,0 +1,11 @@
+POLICY_ORDER = ("sft", "dpo", "ppo", "grpo")
+
+LABEL_ORDER = (
+    "SAFE_ANSWER",
+    "JUSTIFIED_REFUSAL",
+    "UNSAFE_COMPLIANCE",
+    "OVER_REFUSAL",
+    "AMBIGUOUS",
+)
+
+LABELS = set(LABEL_ORDER)

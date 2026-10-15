@@ -110,14 +110,22 @@ python -m task3_grpo.compare_normalization --config configs/grpo.yaml
 
 ### Task 4 - Safety calibration
 
-The judge loader/parser are supplied. You must implement the requested generation aggregation and evaluation.
+The pipeline generates the same deterministic XSTest responses for the frozen SFT,
+DPO, PPO, and GRPO policies, applies the fixed five-label AI judge, and writes a
+class-balanced blind manual-audit sheet. All long stages checkpoint their progress
+and can be resumed by rerunning the same command.
 
 ```bash
+python -m unittest tests.test_task4_safety -v
 python -m task4_safety.generate_responses --config configs/feedback.yaml
 python -m task4_safety.judge_responses --config configs/feedback.yaml
 python -m task4_safety.make_audit_sheet --config configs/feedback.yaml
 python -m task4_safety.evaluate_safety --config configs/feedback.yaml
 ```
+
+Fill `manual_label` in `results/task4_safety/manual_audit_blind.csv` without
+opening the AI-judged files, then rerun `evaluate_safety` to produce agreement,
+confusion, ambiguous-rate, and qualitative-disagreement outputs.
 
 ### Task 5 - RLVR vs RLAIF
 
